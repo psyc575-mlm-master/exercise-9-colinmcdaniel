@@ -1,0 +1,160 @@
+---
+title: "Exercise: Model Averaging and GitHub"
+author: "Your Name"
+date: "11/04/2021"
+output:
+  github_document:
+    toc: true
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+```
+
+Instructions:
+
+1. Update the `author` field to your name(s) in line 3.
+
+2. Run the following code and fill in the blanks. You may need to install the `mlmRev` package, but other than that you shouldn't need to change any R code below.
+
+```{r load-pkgs, message = FALSE}
+library(tidyverse)
+library(mlmRev)  # if error, install the mlmRev package first:
+# install.packages("mlmRev")
+library(here)
+library(haven)
+library(lme4)
+library(MuMIn)  # for model averaging
+library(modelsummary)
+theme_set(theme_bw())  # Theme; just my personal preference
+```
+
+## Import and Scale the Data
+
+```{r import_sav, message = FALSE}
+# Import HSB data from the mlmRev package
+data(Hsb82, package = "mlmRev")
+# Rename to hsball
+hsball <- Hsb82
+```
+
+## Obtain a Subset of 50 Schools (~ 2,000 students)
+
+```{r hsbsub}
+# Create a subset of 50 schools
+set.seed(2)  # make the results reproducible
+random_schools <- sample(unique(hsball$school), size = 50)
+hsbsub <- hsball %>% 
+  filter(school %in% random_schools) %>% 
+  # cluster-mean centeringn
+  group_by(school) %>% 
+  mutate(ses_cm = mean(ses),  # mean SES
+         sx_cm = mean(sx == "Female"),  # proportion female
+         minrty_cm = mean(minrty == "Yes"),  # proportion minority
+         ses_cmc = ses - ses_cm) %>% 
+  ungroup()
+```
+
+## Fit Four Separate Models
+
+```{r m1-m3}
+m1 <- lmer(mAch ~ sector * ses_cmc +
+             (1 + ses_cmc | school), data = hsbsub, 
+           na.action = "na.fail",  # needed for the `MuMIn` package
+           REML = FALSE)  # use ML to get AIC/BIC
+m2 <- lmer(mAch ~ ses_cmc + ses_cm + (1 + ses_cmc | school), data = hsbsub,
+           na.action = "na.fail",  # needed for the `MuMIn` package
+           REML = FALSE)  # use ML to get AIC/BIC
+m3 <- lmer(mAch ~ minrty_cm + minrty + ses_cm + ses_cmc +
+             (1 + minrty + ses_cmc | school), data = hsbsub, 
+           na.action = "na.fail",  # needed for the `MuMIn` package
+           REML = FALSE)  # use ML to get AIC/BIC
+m4 <- lmer(mAch ~ (minrty_cm + minrty) * (ses_cm + ses_cmc) +
+             (1 + minrty + ses_cmc | school), data = hsbsub, 
+           na.action = "na.fail",  # needed for the `MuMIn` package
+           REML = FALSE)  # use ML to get AIC/BIC
+AIC(m1, m2, m3, m4)  # marginal AIC
+```
+
+Fill in the blank: Model ____ appears to have the best out-of-sample prediction accuracy?
+
+## Averaging M1, M2, M3, and M4
+
+In model averaging, the Akaike weights are usually used, defined as
+$$\frac{\exp(-0.5 \times \Delta_m)}{\sum_i \exp(-0.5 \times \Delta_i)}, $$
+where $\Delta_m = \text{AIC}_m - \text{AIC}_\text{min}$ is the difference between the AIC of model $m$ from the minimum AIC among all the candidate models. You can get the model weights with
+
+```{r}
+model.sel(m1, m2, m3, m4, rank = "AIC")  # see the last column
+```
+
+Fill in the blank: Model ____ has the highest weight
+
+To average the models, we use
+
+```{r m_avg1}
+# Averaging
+m_avg1 <- model.avg(m1, m2, m3, m4, rank = "AIC")
+summary(m_avg1)
+```
+
+Now let's look at the prediction accuracy on the hold-out sample (i.e., the remaining 110 schools). 
+
+### Test error
+
+```{r}
+# Validation sample
+hsbtest <- hsball %>% 
+  filter(!school %in% random_schools) %>% 
+  # cluster-mean centeringn
+  group_by(school) %>% 
+  mutate(ses_cm = mean(ses),  # mean SES
+         sx_cm = mean(sx == "Female"),  # proportion female
+         minrty_cm = mean(minrty == "Yes"),  # proportion minority
+         ses_cmc = ses - ses_cm) %>% 
+  ungroup()
+mse <- lapply(list(m1 = m1, m2 = m2, m3 = m3, m4 = m4, `m_avg1` = m_avg1), 
+              function(m) {
+                mean(
+                  (predict(m, newdata = hsbtest, re.form = NA) -
+                     hsbtest$mAch)^2
+                )
+              })
+# Mean squared errors
+unlist(mse)
+```
+
+Fill in the blank: From the output above, model ____ shows the highest out-of-sample prediction accuracy.
+
+## Model Averaging of More Models
+
+The following performs model averaging of 23 best possible submodels that contain `ses_cmc` and `ses_cm` out of the 7 predictors, using Akaike weights.
+
+```{r m_full}
+m_full <- lmer(mAch ~ ses_cmc + ses_cm +
+                 minrty + minrty_cm + sx + sx_cm +
+                 (1 + ses_cmc + minrty + sx | school), data = hsbsub, 
+               na.action = "na.fail",
+               REML = FALSE)
+dd <- dredge(m_full, fixed = ~ ses_cmc + ses_cm, rank = "AIC")
+# Average models with 95% of the Akaike weights
+dd_models <- get.models(dd, subset = cumsum(weight) <= .95)
+m_avg2 <- model.avg(dd_models)
+summary(m_avg2)
+# Mean squared error 
+mean(
+  (predict(m_avg2, newdata = hsbtest, re.form = NA) - hsbtest$mAch)^2
+)
+```
+
+Note the above performs better than previous models.
+
+The following shows the variance importance of the predictors. It adds up the weights of the models that contain a given predictor, for each predictor. 
+
+```{r imp-avg2}
+importance(m_avg2)
+```
+
+Fill in the blanks: Aside from `ses_cm` and `ses_cmc`, ______ are the most important for predicting `mAch`, while _____ is the least important?
+
+To learn more about averaging, check out this paper: https://www.sciencedirect.com/science/article/pii/S0022249699912786

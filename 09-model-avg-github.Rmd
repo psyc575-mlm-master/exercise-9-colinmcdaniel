@@ -1,6 +1,6 @@
 ---
 title: "Exercise: Model Averaging and GitHub"
-author: "Your Name"
+author: "Colin McDaniel"
 date: "11/04/2021"
 output:
   github_document:
@@ -76,7 +76,7 @@ m4 <- lmer(mAch ~ (minrty_cm + minrty) * (ses_cm + ses_cmc) +
 AIC(m1, m2, m3, m4)  # marginal AIC
 ```
 
-Fill in the blank: Model ____ appears to have the best out-of-sample prediction accuracy?
+Fill in the blank: Model 4 appears to have the best out-of-sample prediction accuracy.
 
 ## Averaging M1, M2, M3, and M4
 
@@ -88,7 +88,7 @@ where $\Delta_m = \text{AIC}_m - \text{AIC}_\text{min}$ is the difference betwee
 model.sel(m1, m2, m3, m4, rank = "AIC")  # see the last column
 ```
 
-Fill in the blank: Model ____ has the highest weight
+Fill in the blank: Model 4 has the highest weight
 
 To average the models, we use
 
@@ -124,7 +124,7 @@ mse <- lapply(list(m1 = m1, m2 = m2, m3 = m3, m4 = m4, `m_avg1` = m_avg1),
 unlist(mse)
 ```
 
-Fill in the blank: From the output above, model ____ shows the highest out-of-sample prediction accuracy.
+Fill in the blank: From the output above, model 1 shows the highest out-of-sample prediction accuracy.
 
 ## Model Averaging of More Models
 
@@ -155,6 +155,6 @@ The following shows the variance importance of the predictors. It adds up the we
 importance(m_avg2)
 ```
 
-Fill in the blanks: Aside from `ses_cm` and `ses_cmc`, ______ are the most important for predicting `mAch`, while _____ is the least important?
+Fill in the blanks: Aside from `ses_cm` and `ses_cmc`, `minrty` and `sx` are the most important for predicting `mAch`, while `minrty_cm` is the least important?
 
 To learn more about averaging, check out this paper: https://www.sciencedirect.com/science/article/pii/S0022249699912786
